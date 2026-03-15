@@ -42,7 +42,7 @@ async function buscar(){
     const {REGION, MATCH_REGION} = obtenerRegiones();
 
     if(!input.includes("#")){
-        mostrarError("Usá Nombre#TAG (ej: sloox#LAS)");
+        mostrarError("Usá Nombre#TAG (ej: example#LAS)");
         return;
     }
 
