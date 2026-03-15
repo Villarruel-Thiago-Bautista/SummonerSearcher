@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscar Invocador - LoL Analytics</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+    <header class="app-header">
+        <h1 class="app-title">⚔️ Buscar Invocador</h1>
+        <p class="app-subtitle">Analiza a cualquier invocador al instante</p>
+        <div class="header-glow-line"></div>
+    </header>
+
+   <div class="search-box">
+        <select id="regionSelect" class="search-select">
+            <option value="la2" selected>LAS</option>
+            <option value="la1">LAN</option>
+            <option value="na1">NA</option>
+            <option value="euw1">EUW</option>
+            <option value="kr">KR</option>
+        </select>
+        <input id="summonerName" class="search-input" placeholder="Nombre#TAG (ej: sloox#LAS)">
+        <button onclick="buscar()" class="search-btn">🔍 Buscar</button>
+    </div>
+
+    <div id="resultado"></div>
+    
+    <script src="live_manager.js"></script>
+    <script src="buscar_invocador.js"></script>
+    <script src="compañeros_invocador.js"></script>
+</body>
+</html>
