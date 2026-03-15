@@ -4,6 +4,42 @@
 const API_KEY = "RGAPI-0f3f5654-f29f-4ab3-a024-e9475a7e5d31";
 const MATCH_COUNT = 20;
 
+let allMatches = [];
+let currentStart = 0;
+let puuidGlobal, regionGlobal, matchRegionGlobal, summonerGlobal, nameGlobal, tagGlobal, masteriesGlobal, liveDataGlobal;
+let globalesGlobal = { kills:0, deaths:0, assists:0, damage:0, vision:0, wins:0, mvps:0 };
+let champStatsGlobal = {};
+
+function getQueueName(queueId) {
+    const queues = {
+        420: "Ranked Solo/Duo",
+        440: "Ranked Flex",
+        430: "Normal (Blind)",
+        400: "Normal (Draft)",
+        450: "ARAM",
+        700: "Clash",
+        830: "Intro Bots",
+        840: "Beginner Bots",
+        850: "Intermediate Bots",
+        900: "URF",
+        1020: "One for All",
+        1300: "Nexus Blitz",
+        1400: "Ultimate Spellbook",
+        1700: "Arena",
+        1900: "Pick URF",
+        2000: "Tutorial",
+        2010: "Replay",
+        2020: "Tutorial 2"
+    };
+    return queues[queueId] || "Custom";
+}
+
+function formatDuration(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(0).padStart(2, '0');
+    return `${mins}:${secs}`;
+}
+
 function obtenerRegiones(){
     const regionSelect = document.getElementById("regionSelect");
     const region = regionSelect ? regionSelect.value : "la2";
@@ -58,39 +94,48 @@ async function buscar(){
         const accountData = await accountRes.json();
         const puuid = accountData.puuid;
 
+        puuidGlobal = puuid;
+        regionGlobal = REGION;
+        matchRegionGlobal = MATCH_REGION;
+
         // SUMMONER (Para obtener el ID encriptado de la región)
         const summonerRes = await fetch(`https://${REGION}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`,
         { headers:{"X-Riot-Token":API_KEY}});
         const summoner = await summonerRes.json();
 
         // LLAMADAS EN PARALELO (Ranked, Historial y MAESTRÍAS recuperadas)
-        const [rankedRes, matchIdsRes, masteryRes] = await Promise.all([
+        const [rankedRes, masteryRes] = await Promise.all([
             fetch(`https://${REGION}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summoner.id}`, { headers:{"X-Riot-Token":API_KEY}}),
-            fetch(`https://${MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${MATCH_COUNT}`, { headers:{"X-Riot-Token":API_KEY}}),
             fetch(`https://${REGION}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=3`, { headers:{"X-Riot-Token":API_KEY}})
         ]);
 
         const ranked = rankedRes.ok ? await rankedRes.json() : [];
-        const matchIds = await matchIdsRes.json();
         const masteries = masteryRes.ok ? await masteryRes.json() : [];
 
-        const matchPromises = matchIds.map(id=>
-            fetch(`https://${MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/${id}`,
-            { headers:{"X-Riot-Token":API_KEY}})
-            .then(res=>res.json())
-        );
+        let liveData = null; // Inicializamos siempre en null
+        try {
+            // Llamamos a la función del nuevo archivo live_manager.js
+            liveData = await chequearPartidaEnVivo(puuid, REGION);
+        } catch (e) {
+            console.log("No está en partida o error en Spectator API");
+        }
 
-        const historial = await Promise.all(matchPromises);
+        summonerGlobal = summoner;
+        nameGlobal = gameName;
+        tagGlobal = tagLine;
+        masteriesGlobal = masteries;
+        liveDataGlobal = liveData;
 
-    let liveData = null; // Inicializamos siempre en null
-    try {
-        // Llamamos a la función del nuevo archivo live_manager.js
-        liveData = await chequearPartidaEnVivo(puuid, REGION);
-    } catch (e) {
-        console.log("No está en partida o error en Spectator API");
-    }
+        // Reset globals
+        globalesGlobal = { kills:0, deaths:0, assists:0, damage:0, vision:0, wins:0, mvps:0 };
+        champStatsGlobal = {};
+        allMatches = [];
+        currentStart = 0;
 
-        procesarTodo(summoner, ranked, historial, masteries, gameName, tagLine, puuid, liveData);
+        await fetchMatches(0, 20);
+
+        renderizar(summoner, allMatches, globalesGlobal, gameName, tagLine, champStatsGlobal, masteries, liveData);
+        renderMatches();
 
     }catch(e){
         console.error(e);
@@ -98,12 +143,39 @@ async function buscar(){
     }
 }
 
+async function fetchMatches(start, count) {
+    const matchIdsRes = await fetch(`https://${matchRegionGlobal}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuidGlobal}/ids?start=${start}&count=${count}`, { headers:{"X-Riot-Token":API_KEY}});
+    if (!matchIdsRes.ok) {
+        console.error("Error fetching match IDs");
+        return;
+    }
+    const matchIds = await matchIdsRes.json();
+    if (matchIds.length === 0) {
+        // No more matches
+        return;
+    }
+    const matchPromises = matchIds.map(id =>
+        fetch(`https://${matchRegionGlobal}.api.riotgames.com/lol/match/v5/matches/${id}`,
+        { headers:{"X-Riot-Token":API_KEY}})
+        .then(res=>res.json())
+    );
+    const historial = await Promise.all(matchPromises);
+    const newMatches = processMatches(historial, puuidGlobal);
+    allMatches.push(...newMatches);
+    currentStart += count;
+    // Re-render
+    renderizar(summonerGlobal, allMatches, globalesGlobal, nameGlobal, tagGlobal, champStatsGlobal, masteriesGlobal, liveDataGlobal);
+    renderMatches();
+}
+
+function loadMoreMatches() {
+    fetchMatches(currentStart, 20);
+}
+
 // ========================================
 // PROCESAR PARTIDAS
 // ========================================
-function procesarTodo(summoner, ranked, historial, masteries, name, tag, puuid, liveData) {
-    let globales = { kills:0, deaths:0, assists:0, damage:0, vision:0, wins:0, mvps:0 };
-    let champStats = {};
+function processMatches(historial, puuid) {
     let matches = [];
 
     historial.forEach(m=>{
@@ -151,29 +223,31 @@ function procesarTodo(summoner, ranked, historial, masteries, name, tag, puuid, 
         const teamAvgGold = team.reduce((a,b)=>a+b.goldEarned,0)/5;
         const teamGap = Math.abs(teamAvgGold - enemyAvgGold) > 3000;
 
-        if(!champStats[p.championName]) champStats[p.championName]={games:0,wins:0};
-        champStats[p.championName].games++;
-        if(p.win) champStats[p.championName].wins++;
+        if(!champStatsGlobal[p.championName]) champStatsGlobal[p.championName]={games:0,wins:0};
+        champStatsGlobal[p.championName].games++;
+        if(p.win) champStatsGlobal[p.championName].wins++;
 
-        globales.kills += p.kills;
-        globales.deaths += p.deaths;
-        globales.assists += p.assists;
-        globales.damage += p.totalDamageDealtToChampions;
-        globales.vision += p.visionScore;
-        if(p.win) globales.wins++;
-        if(esMVP) globales.mvps++;
+        globalesGlobal.kills += p.kills;
+        globalesGlobal.deaths += p.deaths;
+        globalesGlobal.assists += p.assists;
+        globalesGlobal.damage += p.totalDamageDealtToChampions;
+        globalesGlobal.vision += p.visionScore;
+        if(p.win) globalesGlobal.wins++;
+        if(esMVP) globalesGlobal.mvps++;
 
         matches.push({
-            matchId: matchIdDeRiot, // <--- GUARDAMOS EL ID AQUÍ
+            matchId: matchIdDeRiot,
             champ:p.championName, win:p.win, kills:p.kills, deaths:p.deaths, assists:p.assists,
             lvl:p.champLevel, dmg:p.totalDamageDealtToChampions, objDmg:p.damageDealtToObjectives,
             vision:p.visionScore, csMin, kp:Math.round(kp), dmgShare:dmgShare.toFixed(0), carryScore,
             goldDiff, smurf, teamGap, impact:impact.toFixed(0), diffTag, diffClass, esMVP, multiKillText,
-            items:[p.item0,p.item1,p.item2,p.item3,p.item4,p.item5,p.item6]
+            items:[p.item0,p.item1,p.item2,p.item3,p.item4,p.item5,p.item6],
+            queueName: getQueueName(m.info.queueId),
+            duration: formatDuration(m.info.gameDuration)
         });
     });
 
-   renderizar(summoner, matches, globales, name, tag, champStats, masteries, liveData);
+    return matches;
 }
 
 // ========================================
@@ -182,27 +256,27 @@ function procesarTodo(summoner, ranked, historial, masteries, name, tag, puuid, 
 // ========================================
 // RENDER
 // ========================================
-function renderizar(summoner, matches, globales, name, tag, champStats, masteries, liveData) {
-    const total = matches.length || 1;
+function renderizar(summoner, allMatchesParam, globales, name, tag, champStats, masteries, liveData) {
+    const total = allMatchesParam.length || 1;
     const avgKDA = ((globales.kills+globales.assists)/Math.max(1,globales.deaths)).toFixed(2);
     const avgDmg = (globales.damage/total).toLocaleString();
     const winRate = ((globales.wins/total)*100).toFixed(0);
     const avgVision = (globales.vision/total).toFixed(0);
 
-    const ultimas5 = matches.slice(0,5);
+    const ultimas5 = allMatchesParam.slice(0,5);
     const wins = ultimas5.filter(x=>x.win).length;
     let streak="Jugador inconsistente";
     if(wins>=4) streak="🔥 Hot Streak";
     else if(wins<=1) streak="💀 Cold Streak";
 
-    const ultimas3 = matches.slice(0,3);
+    const ultimas3 = allMatchesParam.slice(0,3);
     const derrotasSeguidas = ultimas3.filter(m=>!m.win).length;
     let tilt="🧠 Mentalidad estable";
     if(derrotasSeguidas>=3) tilt="🧠 Riesgo de Tilt Crítico";
     else if(derrotasSeguidas==2) tilt="🧠 Posible Tilt";
 
     const consistency = avgKDA>3 ? "🎯 Rendimiento Consistente" : "🎯 Rendimiento Variable";
-    const smurfGames = matches.filter(m=>m.smurf).length;
+    const smurfGames = allMatchesParam.filter(m=>m.smurf).length;
     let smurfMsg="🧩 Jugador Standard";
     if(smurfGames>=3) smurfMsg="🧩 Indicadores de Smurf";
 
@@ -286,9 +360,15 @@ function renderizar(summoner, matches, globales, name, tag, champStats, masterie
         </div>
 
         <div class="history-list">
-            ${matches.map(m=>{
-                const kdaColor = ((m.kills+m.assists)/Math.max(1,m.deaths)) > 6 ? 'kda-god' : ((m.kills+m.assists)/Math.max(1,m.deaths)) > 4 ? 'kda-high' : ((m.kills+m.assists)/Math.max(1,m.deaths)) < 1 ? 'kda-low' : '';
-                return `
+        </div>
+    </div>
+    `;
+}
+
+function renderMatches() {
+    const historyHtml = allMatches.map(m=>{
+        const kdaColor = ((m.kills+m.assists)/Math.max(1,m.deaths)) > 6 ? 'kda-god' : ((m.kills+m.assists)/Math.max(1,m.deaths)) > 4 ? 'kda-high' : ((m.kills+m.assists)/Math.max(1,m.deaths)) < 1 ? 'kda-low' : '';
+        return `
             <div class="match-row ${m.win ? 'match-win' : 'match-loss'}" onclick="verDetallesPartida('${m.matchId}', this)">
                 <div class="m-left">
                     <div class="champ-img-box">
@@ -297,6 +377,8 @@ function renderizar(summoner, matches, globales, name, tag, champStats, masterie
                     </div>
                     <div class="m-meta">
                         <strong class="${m.win ? 't-win':'t-loss'}">${m.win ? 'VICTORIA':'DERROTA'}</strong>
+                        <span class="m-queue">${m.queueName}</span>
+                        <span class="m-duration">${m.duration}</span>
                         <span class="m-cs-val">${m.csMin} CS/min</span>
                         ${m.diffTag ? `<span class="diff-tag ${m.diffClass}">${m.diffTag}</span>`:''}
                     </div>
@@ -323,10 +405,8 @@ function renderizar(summoner, matches, globales, name, tag, champStats, masterie
                     ${m.items.map(id => id>0 ? `<img src="https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VERSION}/img/item/${id}.png" onerror="this.style.visibility='hidden'">` : `<div class="i-empty"></div>`).join('')}
                 </div>
             </div>
-            `}).join('')}
-        </div>
-    </div>
-    `;
+            `}).join('') + '<button id="loadMoreBtn" onclick="loadMoreMatches()">↓</button>';
+    document.querySelector('.history-list').innerHTML = historyHtml;
 }
 
 function mostrarError(m){

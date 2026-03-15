@@ -149,6 +149,8 @@ body {
 .t-win { color: var(--win-blue); font-weight: 900; font-size: 15px; letter-spacing: 0.5px; }
 .t-loss { color: var(--loss-red); font-weight: 900; font-size: 15px; letter-spacing: 0.5px; }
 .m-cs-val { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.m-queue { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.m-duration { color: var(--text-muted); font-size: 12px; font-weight: 600; }
 
 .m-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-right: 1px solid var(--border-subtle); padding-right: 20px; }
 .m-kda { font-size: 18px; font-weight: 900; letter-spacing: 1px; }
@@ -329,4 +331,27 @@ body {
     margin-bottom: 8px;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
+}
+
+/* Load More Button */
+#loadMoreBtn {
+    background: var(--bg-glass);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 600;
+    transition: all 0.2s;
+    margin: 20px auto;
+    display: block;
+    backdrop-filter: blur(10px);
+}
+
+#loadMoreBtn:hover {
+    background: var(--primary-blue);
+    border-color: var(--primary-blue);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(79, 124, 255, 0.3);
 }
