@@ -1,7 +1,6 @@
 // ========================================
 // CONFIGURACIÓN
 // ========================================
-const API_KEY = "RGAPI-0f3f5654-f29f-4ab3-a024-e9475a7e5d31";
 const MATCH_COUNT = 20;
 
 let allMatches = [];
@@ -88,7 +87,7 @@ async function buscar(){
     try{
         // ACCOUNT (Para obtener el PUUID)
         const accountRes = await fetch(`https://${MATCH_REGION}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
-        { headers:{"X-Riot-Token":API_KEY}});
+        { headers:{"X-Riot-Token":window.API_KEY}});
 
         if(!accountRes.ok) throw new Error("Jugador no encontrado.");
         const accountData = await accountRes.json();
@@ -100,13 +99,13 @@ async function buscar(){
 
         // SUMMONER (Para obtener el ID encriptado de la región)
         const summonerRes = await fetch(`https://${REGION}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`,
-        { headers:{"X-Riot-Token":API_KEY}});
+        { headers:{"X-Riot-Token":window.API_KEY}});
         const summoner = await summonerRes.json();
 
         // LLAMADAS EN PARALELO (Ranked, Historial y MAESTRÍAS recuperadas)
         const [rankedRes, masteryRes] = await Promise.all([
-            fetch(`https://${REGION}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summoner.id}`, { headers:{"X-Riot-Token":API_KEY}}),
-            fetch(`https://${REGION}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=3`, { headers:{"X-Riot-Token":API_KEY}})
+            fetch(`https://${REGION}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`, { headers:{"X-Riot-Token":window.API_KEY}}),
+            fetch(`https://${REGION}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}/top?count=3`, { headers:{"X-Riot-Token":window.API_KEY}})
         ]);
 
         const ranked = rankedRes.ok ? await rankedRes.json() : [];
@@ -134,7 +133,7 @@ async function buscar(){
 
         await fetchMatches(0, 20);
 
-        renderizar(summoner, allMatches, globalesGlobal, gameName, tagLine, champStatsGlobal, masteries, liveData);
+        renderizar(summoner, allMatches, globalesGlobal, gameName, tagLine, champStatsGlobal, masteries, liveData, ranked);
         renderMatches();
 
     }catch(e){
@@ -144,7 +143,7 @@ async function buscar(){
 }
 
 async function fetchMatches(start, count) {
-    const matchIdsRes = await fetch(`https://${matchRegionGlobal}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuidGlobal}/ids?start=${start}&count=${count}`, { headers:{"X-Riot-Token":API_KEY}});
+    const matchIdsRes = await fetch(`https://${matchRegionGlobal}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuidGlobal}/ids?start=${start}&count=${count}`, { headers:{"X-Riot-Token":window.API_KEY}});
     if (!matchIdsRes.ok) {
         console.error("Error fetching match IDs");
         return;
@@ -156,7 +155,7 @@ async function fetchMatches(start, count) {
     }
     const matchPromises = matchIds.map(id =>
         fetch(`https://${matchRegionGlobal}.api.riotgames.com/lol/match/v5/matches/${id}`,
-        { headers:{"X-Riot-Token":API_KEY}})
+        { headers:{"X-Riot-Token":window.API_KEY}})
         .then(res=>res.json())
     );
     const historial = await Promise.all(matchPromises);
@@ -164,7 +163,7 @@ async function fetchMatches(start, count) {
     allMatches.push(...newMatches);
     currentStart += count;
     // Re-render
-    renderizar(summonerGlobal, allMatches, globalesGlobal, nameGlobal, tagGlobal, champStatsGlobal, masteriesGlobal, liveDataGlobal);
+    renderizar(summonerGlobal, allMatches, globalesGlobal, nameGlobal, tagGlobal, champStatsGlobal, masteriesGlobal, liveDataGlobal, []);
     renderMatches();
 }
 
@@ -256,7 +255,8 @@ function processMatches(historial, puuid) {
 // ========================================
 // RENDER
 // ========================================
-function renderizar(summoner, allMatchesParam, globales, name, tag, champStats, masteries, liveData) {
+function renderizar(summoner, allMatchesParam, globales, name, tag, champStats, masteries, liveData, ranked) {
+    ranked = Array.isArray(ranked) ? ranked : [];
     const total = allMatchesParam.length || 1;
     const avgKDA = ((globales.kills+globales.assists)/Math.max(1,globales.deaths)).toFixed(2);
     const avgDmg = (globales.damage/total).toLocaleString();
@@ -307,6 +307,39 @@ function renderizar(summoner, allMatchesParam, globales, name, tag, champStats, 
             </div>
             <div class="profile-info">
                 <h2>${name} <span class="tag">#${tag}</span></h2>
+                <div class="ranks">
+                    ${(() => {
+                        const queues = [
+                            { key: 'RANKED_SOLO_5x5', label: 'Solo/Duo' },
+                            { key: 'RANKED_FLEX_SR', label: 'Flex' }
+                        ];
+                        const tierClasses = {
+                            IRON: 'tier-iron',
+                            BRONZE: 'tier-bronze',
+                            SILVER: 'tier-silver',
+                            GOLD: 'tier-gold',
+                            PLATINUM: 'tier-platinum',
+                            EMERALD: 'tier-emerald',
+                            DIAMOND: 'tier-diamond',
+                            MASTER: 'tier-master',
+                            GRANDMASTER: 'tier-grandmaster',
+                            CHALLENGER: 'tier-challenger',
+                        };
+
+                        return queues.map(q => {
+                            const r = ranked.find(r => r.queueType === q.key);
+                            if(!r) {
+                                return `<div class="rank-item rank-unranked"><span class="rank-queue">${q.label}</span><span class="rank-tier">UNRANKED</span></div>`;
+                            }
+                            const tierClass = tierClasses[r.tier] || '';
+                            return `<div class="rank-item">
+                                <span class="rank-queue">${q.label}</span>
+                                <span class="rank-badge ${tierClass}">${r.tier} ${r.rank}</span>
+                                <span class="rank-lp">${r.leaguePoints} LP</span>
+                            </div>`;
+                        }).join('');
+                    })()}
+                </div>
             </div>
         </div>
 

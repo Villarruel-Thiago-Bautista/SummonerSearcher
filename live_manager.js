@@ -2,7 +2,7 @@
 
 async function chequearPartidaEnVivo(puuid, region) {
     try {
-        const res = await fetch(`https://${region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${puuid}?api_key=${API_KEY}`);
+        const res = await fetch(`https://${region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${puuid}?api_key=${window.API_KEY}`);
         
         if (res.status === 404) return null; // No está en partida
         if (!res.ok) throw new Error("Error al consultar Spectator API");
@@ -25,7 +25,7 @@ function renderizarTarjetaLive(liveData) {
     const modoLindo = modos[liveData.gameMode] || liveData.gameMode;
 
     return `
-        <div class="live-status-container">
+        <div class="live-status-container" onclick="abrirLiveDetails()" title="Abrir detalles de la partida">
             <div class="live-indicator">
                 <span class="dot"></span>
                 <strong>EN PARTIDA ACTIVA</strong>
@@ -44,4 +44,15 @@ function renderizarTarjetaLive(liveData) {
             </div>
         </div>
     `;
+}
+
+function abrirLiveDetails() {
+    const { REGION } = obtenerRegiones();
+    if (!liveDataGlobal) return;
+
+    const params = new URLSearchParams({
+        region: REGION,
+        puuid: puuidGlobal
+    });
+    window.open(`live_details.html?${params.toString()}`, '_blank');
 }

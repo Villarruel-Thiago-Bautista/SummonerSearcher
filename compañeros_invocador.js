@@ -1,10 +1,27 @@
+const leagueCache = {};
+
+async function fetchLeagueByPuuid(puuid, region) {
+    if (!puuid) return [];
+    if (leagueCache[puuid]) return leagueCache[puuid];
+
+    try {
+        const res = await fetch(`https://${region}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`, { headers: { "X-Riot-Token": API_KEY } });
+        if (!res.ok) return [];
+        const data = await res.json();
+        leagueCache[puuid] = data;
+        return data;
+    } catch {
+        return [];
+    }
+}
+
 async function verDetallesPartida(matchId, element) {
     if (matchId === 'undefined') return;
 
     const existente = document.getElementById(`detalles-${matchId}`);
     if (existente) { existente.remove(); return; }
 
-    const { MATCH_REGION } = obtenerRegiones();
+    const { REGION, MATCH_REGION } = obtenerRegiones();
     const detallesDiv = document.createElement('div');
     detallesDiv.id = `detalles-${matchId}`;
     detallesDiv.className = 'match-details-expanded';
@@ -17,6 +34,14 @@ async function verDetallesPartida(matchId, element) {
         
         const data = await res.json();
         const participants = data.info.participants;
+
+        // Fetch league info for each participant (cache to reduce requests)
+        const leaguePromises = participants.map(p => fetchLeagueByPuuid(p.puuid, REGION));
+        const leagueResults = await Promise.all(leaguePromises);
+        const leagueByPuuid = participants.reduce((acc, p, idx) => {
+            acc[p.puuid] = leagueResults[idx];
+            return acc;
+        }, {});
 
         const maxDamage = Math.max(...participants.map(p => p.totalDamageDealtToChampions));
 
@@ -37,13 +62,13 @@ async function verDetallesPartida(matchId, element) {
                     <div class="team-header">
                         <h5>Equipo Azul ${equipo1[0].win ? '🏆 VICTORIA' : ''}</h5>
                     </div>
-                    ${equipo1.map(p => renderFilaJugador(p, maxDamage, killsEquipo1, obtenerRival(p, equipo2))).join('')}
+                    ${equipo1.map(p => renderFilaJugador(p, maxDamage, killsEquipo1, obtenerRival(p, equipo2), leagueByPuuid[p.puuid] || [])).join('')}
                 </div>
                 <div class="team-side red-side">
                     <div class="team-header">
                         <h5>Equipo Rojo ${equipo2[0].win ? '🏆 VICTORIA' : ''}</h5>
                     </div>
-                    ${equipo2.map(p => renderFilaJugador(p, maxDamage, killsEquipo2, obtenerRival(p, equipo1))).join('')}
+                    ${equipo2.map(p => renderFilaJugador(p, maxDamage, killsEquipo2, obtenerRival(p, equipo1), leagueByPuuid[p.puuid] || [])).join('')}
                 </div>
             </div>
         `;
@@ -53,10 +78,22 @@ async function verDetallesPartida(matchId, element) {
     }
 }
 
-function renderFilaJugador(p, maxDamage, totalTeamKills, rivalDirecto) {
+function renderFilaJugador(p, maxDamage, totalTeamKills, rivalDirecto, leagueEntries) {
     const kdaNum = ((p.kills + p.assists) / Math.max(1, p.deaths)).toFixed(1);
     const dmgPercentage = (p.totalDamageDealtToChampions / maxDamage) * 100;
     const kp = totalTeamKills > 0 ? (((p.kills + p.assists) / totalTeamKills) * 100).toFixed(0) : 0;
+
+    const soloEntry = (leagueEntries || []).find(e => e.queueType === 'RANKED_SOLO_5x5');
+
+    const leagueHtml = `
+        <div class="p-league">
+            <div class="p-league-item ${soloEntry ? 'tier-' + soloEntry.tier.toLowerCase() : ''}">
+                <span class="p-league-queue">Solo/Duo</span>
+                <span class="p-league-tier">${soloEntry ? `${soloEntry.tier} ${soloEntry.rank}` : 'UNRANKED'}</span>
+                ${soloEntry ? `<span class="p-league-lp">${soloEntry.leaguePoints} LP</span>` : ''}
+            </div>
+        </div>
+    `;
     
     // Protección: Si no hay rivalDirecto, usamos al mismo jugador para que la resta sea 0 y no explote
     const rival = rivalDirecto || p;
@@ -141,6 +178,7 @@ function renderFilaJugador(p, maxDamage, totalTeamKills, rivalDirecto) {
 
             <div class="p-main-info">
                 <span class="p-name" onclick="${clickBusqueda}">${p.riotIdGameName}</span>
+                ${leagueHtml}
                 <div class="p-stats-row">
                     <span class="p-kda-mini">${p.kills}/${p.deaths}/${p.assists}</span>
                     <span class="p-kda-ratio">(${kdaNum})</span>

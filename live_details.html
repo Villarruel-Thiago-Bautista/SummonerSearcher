@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Stats - Campeones</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1 class="app-title">📊 Stats de partida en vivo</h1>
+        <p class="app-subtitle">Maestría de campeones por jugador (Live)</p>
+        <div class="header-glow-line"></div>
+    </header>
+
+    <div id="content" class="card"></div>
+
+    <script>
+        // Definimos la llave para todas las llamadas a la API (usada en live_manager.js)
+        window.API_KEY = "RGAPI-0f3f5654-f29f-4ab3-a024-e9475a7e5d31";
+    </script>
+
+    <script src="live_manager.js"></script>
+    <script src="live_details.js"></script>
+</body>
+</html>
